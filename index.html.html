@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نظام متابعة الموافقات</title>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
+<style>
+:root{
+  --sidebar:#3b5166;      /* لون هادئ بدل الأسود */
+  --sidebar-dark:#2f4250;
+  --accent:#5c8aa6;
+  --bg:#f2f4f6;
+  --card-border:#e2e6ea;
+  --green:#2fae5b;
+  --red:#e14b4b;
+  --text:#233040;
+  --muted:#8a97a5;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:"Segoe UI","Tahoma",Arial,sans-serif;background:var(--bg);color:var(--text);}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+
+/* ---------- Login ---------- */
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--sidebar),var(--sidebar-dark));}
+.loginBox{background:#fff;padding:36px 32px;border-radius:14px;width:320px;box-shadow:0 20px 50px rgba(0,0,0,.25);}
+.loginBox h1{font-size:20px;margin:0 0 18px;text-align:center;color:var(--sidebar);}
+.loginBox input{width:100%;padding:11px 12px;margin-bottom:12px;border:1px solid #d8dee3;border-radius:8px;font-size:14px;}
+.loginBox button{width:100%;padding:11px;border:none;border-radius:8px;background:var(--sidebar);color:#fff;font-size:15px;font-weight:600;}
+.loginErr{color:var(--red);font-size:13px;text-align:center;min-height:18px;margin-bottom:4px;}
+
+/* ---------- App shell ---------- */
+#app{display:none;min-height:100vh;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:220px;background:var(--sidebar);color:#eef2f5;display:flex;flex-direction:column;flex-shrink:0;}
+.sidebar .userBox{padding:20px 16px;text-align:center;border-bottom:1px solid rgba(255,255,255,.12);}
+.sidebar .userBox .name{font-weight:700;font-size:16px;}
+.sidebar nav{flex:1;padding:10px 0;overflow-y:auto;}
+.sidebar .tab{display:flex;align-items:center;gap:10px;padding:12px 18px;color:#dbe4ea;font-size:14px;cursor:pointer;border-right:3px solid transparent;}
+.sidebar .tab:hover{background:rgba(255,255,255,.08);}
+.sidebar .tab.active{background:rgba(255,255,255,.14);border-right-color:#fff;font-weight:600;}
+.sidebar .logout{margin:14px;padding:11px;border:none;border-radius:8px;background:#e07b3f;color:#fff;font-weight:600;text-align:center;}
+
+.main{flex:1;padding:18px 22px;overflow-x:hidden;}
+.pageTitle{font-size:19px;font-weight:700;margin:0 0 16px;color:var(--sidebar);}
+
+/* stat cards */
+.statRow{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+.statCard{flex:1;min-width:150px;background:#fff;border:2px solid var(--card-border);border-radius:10px;padding:14px 10px;text-align:center;}
+.statCard .lbl{font-size:12.5px;color:var(--muted);margin-bottom:6px;}
+.statCard .val{font-size:24px;font-weight:800;}
+.statCard.c1{border-color:#2fae5b;} .statCard.c1 .val{color:#2fae5b;}
+.statCard.c2{border-color:#e0a52f;} .statCard.c2 .val{color:#e0a52f;}
+.statCard.c3{border-color:#8a5ce0;} .statCard.c3 .val{color:#8a5ce0;}
+.statCard.c4{border-color:#e14b4b;} .statCard.c4 .val{color:#e14b4b;}
+.statCard.c5{border-color:#5c8aa6;} .statCard.c5 .val{color:#5c8aa6;}
+
+/* filters */
+.filterRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--card-border);border-radius:10px;padding:10px;margin-bottom:10px;}
+.filterRow select, .filterRow input[type=date], .filterRow input[type=text]{padding:8px 10px;border:1px solid #d8dee3;border-radius:7px;font-size:13.5px;}
+.btn{padding:8px 16px;border:none;border-radius:7px;font-size:13.5px;font-weight:600;}
+.btn-primary{background:var(--sidebar);color:#fff;}
+.btn-green{background:var(--green);color:#fff;}
+.btn-red{background:var(--red);color:#fff;}
+.btn-outline{background:#fff;border:1px solid #d8dee3;color:var(--text);}
+
+/* add form */
+.addForm{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--card-border);border-radius:10px;padding:12px;margin-bottom:16px;}
+.addForm input, .addForm select{padding:9px 10px;border:1px solid #d8dee3;border-radius:7px;font-size:13.5px;flex:1;min-width:130px;}
+.waBtn{background:#25D366;border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;flex-shrink:0;}
+
+/* table */
+.tableWrap{background:#fff;border:1px solid var(--card-border);border-radius:10px;overflow:auto;}
+table{border-collapse:collapse;width:100%;min-width:1100px;font-size:13px;}
+th,td{padding:9px 8px;text-align:center;border-bottom:1px solid #eef1f3;white-space:nowrap;}
+thead th{background:var(--sidebar);color:#fff;position:sticky;top:0;font-weight:600;}
+tbody tr:hover{background:#f7fafc;}
+tr.cancelled{opacity:.5;text-decoration:line-through;}
+.iconBtn{background:none;border:none;font-size:16px;padding:4px;border-radius:6px;}
+.iconBtn:hover{background:#eef2f5;}
+.dot{width:26px;height:26px;border-radius:50%;border:none;font-size:12px;color:#fff;}
+.dot.on{background:var(--green);}
+.dot.off{background:var(--red);}
+.miniSelect{padding:5px 4px;border:1px solid #d8dee3;border-radius:6px;font-size:12px;max-width:110px;}
+.notesTxt{max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;}
+
+/* modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(20,28,36,.55);z-index:60;align-items:center;justify-content:center;}
+.overlay.show{display:flex;}
+.modal{background:#fff;border-radius:12px;width:520px;max-width:92vw;max-height:88vh;overflow:auto;padding:20px;}
+.modal h2{margin:0 0 14px;font-size:17px;color:var(--sidebar);}
+.modalClose{float:left;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
+.rowFlex{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.chatMsg{background:#f2f4f6;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px;}
+.chatMsg .meta{color:var(--muted);font-size:11px;margin-bottom:3px;}
+.histRow{border-bottom:1px solid #eef1f3;padding:7px 0;font-size:13px;}
+.attGrid{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
+.attGrid a{display:block;width:76px;height:76px;border-radius:8px;overflow:hidden;border:1px solid #e2e6ea;}
+.attGrid img{width:100%;height:100%;object-fit:cover;}
+textarea{width:100%;padding:8px;border:1px solid #d8dee3;border-radius:7px;font-size:13px;resize:vertical;}
+label.small{font-size:12px;color:var(--muted);display:block;margin:6px 0 3px;}
+
+/* settings */
+.settingsGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.settingsCol{background:#fff;border:1px solid var(--card-border);border-radius:10px;padding:14px;}
+.settingsCol h3{margin:0 0 10px;font-size:14.5px;color:var(--sidebar);}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#eef2f5;border-radius:16px;padding:5px 10px;font-size:12.5px;margin:3px;}
+.chip button{background:none;border:none;color:var(--red);font-size:13px;}
+.gate{max-width:320px;margin:60px auto;text-align:center;}
+
+.hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7;}
+.searchBox{position:relative;flex:1;min-width:160px;}
+
+/* drive + attach groups */
+.driveStatus{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:#eef2f5;border-radius:8px;padding:7px 10px;margin-bottom:10px;cursor:pointer;border:1px solid var(--card-border);}
+.attGroupBox{border:1px solid var(--card-border);border-radius:10px;padding:10px;margin-bottom:10px;background:#fafbfc;}
+.attGroupBox .gTitle{font-weight:700;font-size:13.5px;color:var(--sidebar);margin-bottom:6px;}
+.attGroupBox .gBtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.attGroupBox .gBtns .btn{font-size:12px;padding:6px 10px;}
+.attGrid a{position:relative;}
+.attGrid .fname{font-size:9px;color:var(--muted);display:block;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:76px;}
+
+/* branch (other branches) read-only viewer page */
+#branchView{display:none;min-height:100vh;background:var(--bg);padding:18px 22px;}
+#branchView .brHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+#branchView .brHead h1{font-size:18px;color:var(--sidebar);margin:0;}
+.printOnly{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  #printArea, #printArea *{visibility:visible;}
+  #printArea{position:absolute;top:0;right:0;left:0;padding:10px;}
+  .printOnly{display:block;}
+  .noPrint{display:none !important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ========== LOGIN ========== -->
+<div id="loginScreen">
+  <div class="loginBox">
+    <h1>تسجيل الدخول</h1>
+    <input id="loginUser" type="text" placeholder="اسم المستخدم">
+    <input id="loginPass" type="password" placeholder="كلمة المرور">
+    <div class="loginErr" id="loginErr"></div>
+    <button onclick="doLogin()">دخول</button>
+  </div>
+</div>
+
+<!-- ========== APP ========== -->
+<div id="app">
+<div class="layout">
+  <aside class="sidebar">
+    <div class="userBox"><div class="name" id="sbUserName">—</div></div>
+    <nav id="tabsNav"></nav>
+    <button class="logout" onclick="doLogout()">تسجيل خروج</button>
+  </aside>
+
+  <main class="main">
+    <!-- ===== Tab: موافقات ===== -->
+    <section id="tab-approvals" class="tabPane">
+      <h2 class="pageTitle">موافقات</h2>
+      <div class="statRow">
+        <div class="statCard c5"><div class="lbl">إجمالي الشهر (الكل)</div><div class="val" id="stMonthAll">0</div></div>
+        <div class="statCard c2"><div class="lbl">إجمالي اليوم (الكل)</div><div class="val" id="stDayAll">0</div></div>
+        <div class="statCard c3"><div class="lbl">إجمالي المستخدم (الشهر)</div><div class="val" id="stUserMonth">0</div></div>
+        <div class="statCard c4"><div class="lbl">المتبقي الشخصي</div><div class="val" id="stLeftUser">0</div></div>
+        <div class="statCard c1"><div class="lbl">المتبقي الإجمالي (الشهر)</div><div class="val" id="stLeftAll">0</div></div>
+      </div>
+
+      <div class="filterRow">
+        <select id="fUser"></select>
+        <input type="date" id="fDate">
+        <select id="fCompany"><option value="">كل الشركات</option></select>
+        <div class="searchBox"><input type="text" id="fSearch" placeholder="بحث في الجدول..." style="width:100%"></div>
+        <button class="btn btn-primary" onclick="applyFilters()">بحث</button>
+        <button class="btn btn-outline" onclick="resetFilters()">إلغاء</button>
+      </div>
+
+      <div class="addForm">
+        <input type="text" id="newPhone" placeholder="رقم الهاتف">
+        <input list="dl-companies" id="newCompany" placeholder="الشركة">
+        <input list="dl-branches" id="newBranch" placeholder="الفرع">
+        <input list="dl-methods" id="newMethod" placeholder="طريقة الإرسال">
+        <button class="btn btn-green" onclick="saveNewRecord()">حفظ</button>
+        <button class="waBtn" onclick="openWa()" title="واتساب">🟢</button>
+      </div>
+      <datalist id="dl-companies"></datalist>
+      <datalist id="dl-branches"></datalist>
+      <datalist id="dl-methods"></datalist>
+
+      <div class="tableWrap">
+        <table>
+          <thead><tr>
+            <th>التاريخ</th><th>المستخدم</th><th>الهاتف</th><th>مرفقات</th><th>إرسال شركة</th><th>إرسال مريض</th>
+            <th>الشركة</th><th>الفرع</th><th>طريقة الإرسال</th>
+            <th>حالة الموافقة</th><th>ملاحظات</th><th>إجراءات</th>
+          </tr></thead>
+          <tbody id="recordsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== Tab: اختصارات ===== -->
+    <section id="tab-shortcuts" class="tabPane" style="display:none">
+      <h2 class="pageTitle">اختصارات</h2>
+      <div class="settingsCol">
+        <div id="shortcutsList"></div>
+        <div class="rowFlex" style="margin-top:10px">
+          <input type="text" id="newShortcutName" placeholder="اسم الاختصار" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+          <input type="text" id="newShortcutVal" placeholder="القيمة / الرابط" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+          <button class="btn btn-primary" onclick="addListItem('shortcuts','newShortcutName','newShortcutVal')">إضافة</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Tab: أكواد وتشخيصات ===== -->
+    <section id="tab-codes" class="tabPane" style="display:none">
+      <h2 class="pageTitle">أكواد وتشخيصات</h2>
+      <div class="settingsCol">
+        <div id="codesList"></div>
+        <div class="rowFlex" style="margin-top:10px">
+          <input type="text" id="newCodeName" placeholder="الكود" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+          <input type="text" id="newCodeVal" placeholder="التشخيص" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+          <button class="btn btn-primary" onclick="addListItem('codes','newCodeName','newCodeVal')">إضافة</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Tab: داش بورد ===== -->
+    <section id="tab-dashboard" class="tabPane" style="display:none">
+      <h2 class="pageTitle">داش بورد</h2>
+      <div class="statRow" id="dashUsers"></div>
+      <div class="settingsCol">
+        <h3>عدد السجلات لكل شركة (الشهر الحالي)</h3>
+        <div id="dashCompanies"></div>
+      </div>
+    </section>
+
+    <!-- ===== Tab: تعليمات الشركات ===== -->
+    <section id="tab-instructions" class="tabPane" style="display:none">
+      <h2 class="pageTitle">تعليمات الشركات</h2>
+      <div class="settingsCol">
+        <select id="instCompanySel" style="padding:8px;border:1px solid #d8dee3;border-radius:7px;margin-bottom:10px"></select>
+        <textarea id="instText" rows="8" placeholder="تعليمات الشركة المختارة..."></textarea>
+        <button class="btn btn-primary" style="margin-top:10px" onclick="saveInstruction()">حفظ التعليمات</button>
+      </div>
+    </section>
+
+    <!-- ===== Tab: روابط أخرى ===== -->
+    <section id="tab-links" class="tabPane" style="display:none">
+      <h2 class="pageTitle">روابط أخرى</h2>
+      <div class="settingsCol">
+        <div id="linksList"></div>
+        <div class="rowFlex" style="margin-top:10px">
+          <input type="text" id="newLinkName" placeholder="اسم الرابط" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+          <input type="text" id="newLinkVal" placeholder="عنوان الرابط (URL)" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+          <button class="btn btn-primary" onclick="addListItem('links','newLinkName','newLinkVal')">إضافة</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Tab: عرض المرفقات (الفرع الآخر) ===== -->
+    <section id="tab-viewer" class="tabPane" style="display:none">
+      <h2 class="pageTitle">عرض المرفقات - حسب رقم الهاتف</h2>
+      <div class="filterRow">
+        <input type="text" id="vwYear" placeholder="السنة (اختياري)" style="width:100px">
+        <input type="text" id="vwMonth" placeholder="الشهر (اختياري)" style="width:100px">
+        <input type="text" id="vwDay" placeholder="اليوم (اختياري)" style="width:100px">
+        <div class="searchBox"><input type="text" id="vwSearch" placeholder="بحث برقم الهاتف..." style="width:100%"></div>
+        <button class="btn btn-primary" onclick="renderViewer()">بحث</button>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>التاريخ</th><th>الهاتف</th><th>الشركة</th><th>عدد المرفقات</th><th>عرض</th></tr></thead>
+          <tbody id="viewerBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== Tab: الإعدادات (سر 252) ===== -->
+    <section id="tab-settings" class="tabPane" style="display:none">
+      <h2 class="pageTitle">الإعدادات</h2>
+      <div id="settingsGate" class="gate">
+        <p>هذا القسم محمي - أدخل كلمة السر</p>
+        <input type="password" id="settingsPass" placeholder="كلمة السر" style="width:100%;padding:10px;border:1px solid #d8dee3;border-radius:7px;margin-bottom:10px">
+        <button class="btn btn-primary" style="width:100%" onclick="checkSettingsPass()">دخول</button>
+      </div>
+      <div id="settingsBody" style="display:none">
+        <div class="settingsGrid">
+          <div class="settingsCol">
+            <h3>المستخدمون وكلمات المرور</h3>
+            <div id="usersList"></div>
+            <div class="rowFlex" style="margin-top:8px">
+              <input type="text" id="newUserName" placeholder="اسم المستخدم" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+              <input type="text" id="newUserPass" placeholder="كلمة المرور" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+              <button class="btn btn-primary" onclick="addUser()">إضافة</button>
+            </div>
+          </div>
+          <div class="settingsCol">
+            <h3>الشركات</h3>
+            <div id="companiesList"></div>
+            <div class="rowFlex" style="margin-top:8px">
+              <input type="text" id="newCompanyOpt" placeholder="اسم الشركة" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+              <button class="btn btn-primary" onclick="addOption('companies','newCompanyOpt')">إضافة</button>
+            </div>
+          </div>
+          <div class="settingsCol">
+            <h3>الفروع</h3>
+            <div id="branchesList"></div>
+            <div class="rowFlex" style="margin-top:8px">
+              <input type="text" id="newBranchOpt" placeholder="اسم الفرع" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+              <button class="btn btn-primary" onclick="addOption('branches','newBranchOpt')">إضافة</button>
+            </div>
+          </div>
+          <div class="settingsCol">
+            <h3>طرق الإرسال</h3>
+            <div id="methodsList"></div>
+            <div class="rowFlex" style="margin-top:8px">
+              <input type="text" id="newMethodOpt" placeholder="طريقة الإرسال" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+              <button class="btn btn-primary" onclick="addOption('methods','newMethodOpt')">إضافة</button>
+            </div>
+          </div>
+          <div class="settingsCol">
+            <h3>حالات الموافقة</h3>
+            <div id="statusesList"></div>
+            <div class="rowFlex" style="margin-top:8px">
+              <input type="text" id="newStatusOpt" placeholder="حالة الموافقة" style="flex:1;padding:8px;border:1px solid #d8dee3;border-radius:7px">
+              <button class="btn btn-primary" onclick="addOption('statuses','newStatusOpt')">إضافة</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</div>
+
+<!-- ========== BRANCH VIEW (رابط منفصل للفروع الأخرى - عرض وطباعة فقط بدون تسجيل دخول) ========== -->
+<div id="branchView">
+  <div class="brHead">
+    <h1>🖼️ عرض مرفقات المرضى (فروع أخرى)</h1>
+  </div>
+  <div class="filterRow noPrint">
+    <input type="text" id="bvYear" placeholder="السنة (مثال 2026)" style="width:110px">
+    <input type="text" id="bvMonth" placeholder="الشهر (مثال 09)" style="width:90px">
+    <input type="text" id="bvDay" placeholder="اليوم (مثال 25)" style="width:90px">
+    <div class="searchBox"><input type="text" id="bvSearch" placeholder="بحث برقم الهاتف..." style="width:100%"></div>
+    <button class="btn btn-primary" onclick="renderBranchView()">بحث</button>
+  </div>
+  <div class="tableWrap noPrint">
+    <table>
+      <thead><tr><th>التاريخ</th><th>الهاتف</th><th>الشركة</th><th>الفرع</th><th>عدد المرفقات</th><th>عرض / طباعة</th></tr></thead>
+      <tbody id="branchBody"></tbody>
+    </table>
+  </div>
+
+  <!-- تفاصيل مرفقات سجل محدد + طباعة -->
+  <div class="overlay" id="ovBranchAttach"><div class="modal">
+    <button class="modalClose noPrint" onclick="closeModal('ovBranchAttach')">×</button>
+    <div class="rowFlex noPrint" style="justify-content:flex-end">
+      <button class="btn btn-outline" onclick="window.print()">🖨️ طباعة</button>
+    </div>
+    <div id="printArea">
+      <h2 id="bvDetailTitle">مرفقات</h2>
+      <div id="bvDetailGroups"></div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ========== MODALS ========== -->
+<div class="overlay" id="ovAttach"><div class="modal">
+  <button class="modalClose" onclick="closeModal('ovAttach')">×</button>
+  <h2>مرفقات السجل</h2>
+  <div id="attGroups"></div>
+  <div class="rowFlex">
+    <button class="btn btn-primary" onclick="addPatientGroup()">➕ ملف مريض باسم آخر</button>
+  </div>
+</div></div>
+
+<div class="overlay" id="ovNotes"><div class="modal">
+  <button class="modalClose" onclick="closeModal('ovNotes')">×</button>
+  <h2>الملاحظات</h2>
+  <div id="notesChat"></div>
+  <textarea id="notesInput" rows="2" placeholder="اكتب ملاحظة..."></textarea>
+  <button class="btn btn-primary" style="margin-top:8px" onclick="sendNote()">إرسال</button>
+</div></div>
+
+<div class="overlay" id="ovHistory"><div class="modal">
+  <button class="modalClose" onclick="closeModal('ovHistory')">×</button>
+  <h2>سجل التعديلات</h2>
+  <div id="historyBody"></div>
+</div></div>
+
+<script>
+/* ===================== FIREBASE INIT ===================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyAVWIslB7fj9WhwE0ULLmqC45PrZTCTXg8",
+  authDomain: "my-system-db-e5540.firebaseapp.com",
+  projectId: "my-system-db-e5540",
+  storageBucket: "my-system-db-e5540.firebasestorage.app",
+  messagingSenderId: "171033177665",
+  appId: "1:171033177665:web:98b2ea7e6fff539135a0c0",
+  measurementId: "G-B9QMK8M5ZN"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+/* ===================== STATE ===================== */
+let currentUser = null;      // {id, name, password}
+let allRecords = [];         // live cache of records
+let optionsData = {companies:[], branches:[], methods:[], statuses:[]};
+let usersData = [];
+let listsData = {shortcuts:[], codes:[], links:[]};
+let instructionsData = {};
+let activeAttachRecordId = null;
+let activeNotesRecordId = null;
+
+/* ===================== GOOGLE DRIVE (عبر Google Apps Script كوسيط - بدون OAuth) ===================== */
+// رابط تطبيق الويب الخاص بـ Google Apps Script (يقوم هو بالرفع فعليًا داخل فولدر الدرايف)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwOGRfcBvaZlu3bDfKu7-IcNB_h3kyg4WPab6hgmH9bLyvkYhs2GKLI6ANoEKl1oGZD/exec';
+// المجلد العام على جوجل درايف (مُستخدَم داخل كود الـ Apps Script نفسه أيضًا) - سيتم الحفظ بداخله: سنة/شهر/يوم/رقم الهاتف/اسم المريض إن وجد
+const DRIVE_ROOT_FOLDER_ID = '1eJe9ccFkMmGQOP1XVqX0WU9Iw1g8w70r';
+
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result.split(',')[1]); // إزالة data:...;base64, من البداية
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function driveUploadFile(file, phone, groupName, customFileName){
+  const base64 = await fileToBase64(file);
+  const payload = {
+    action: 'upload',
+    phone: phone || 'بدون_رقم',
+    groupName: groupName || phone || 'بدون_رقم',
+    fileName: customFileName || file.name,
+    mimeType: file.type || 'application/octet-stream',
+    base64
+  };
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain;charset=utf-8'}, // نوع بسيط يمنع طلب preflight الذي لا يدعمه Apps Script
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'فشل رفع الملف');
+  return data; // {ok:true, id, url, thumb}
+}
+
+const TABS = [
+  {id:'approvals', label:'موافقات', icon:'📋'},
+  {id:'shortcuts', label:'اختصارات', icon:'⏩'},
+  {id:'codes', label:'أكواد وتشخيصات', icon:'🏷️'},
+  {id:'dashboard', label:'داش بورد', icon:'📊'},
+  {id:'instructions', label:'تعليمات الشركات', icon:'📄'},
+  {id:'links', label:'روابط أخرى', icon:'🔗'},
+  {id:'viewer', label:'عرض مرفقات (فرع آخر)', icon:'🖼️'},
+  {id:'settings', label:'الإعدادات', icon:'⚙️'},
+];
+
+/* ===================== LOGIN ===================== */
+function doLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  if(!u || !p){ errEl.textContent = 'ادخل اسم المستخدم وكلمة المرور'; return; }
+  db.collection('users').doc(u).get().then(doc=>{
+    if(doc.exists && doc.data().password === p){
+      currentUser = {id:u, name: doc.data().name || u, password:p};
+      localStorage.setItem('sys_user', JSON.stringify(currentUser));
+      startApp();
+    } else {
+      errEl.textContent = 'بيانات الدخول غير صحيحة';
+    }
+  }).catch(err=>{ errEl.textContent = 'خطأ في الاتصال: '+err.message; });
+}
+function doLogout(){
+  localStorage.removeItem('sys_user');
+  location.reload();
+}
+(function tryAutoLogin(){
+  const saved = localStorage.getItem('sys_user');
+  if(saved){ currentUser = JSON.parse(saved); }
+})();
+
+/* ===================== APP START ===================== */
+function startApp(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('sbUserName').textContent = currentUser.name;
+  buildSidebar();
+  document.getElementById('fDate').valueAsDate = new Date();
+  listenOptions();
+  listenUsers();
+  listenLists();
+  listenRecords();
+  switchTab('approvals');
+}
+function isBranchLink(){
+  return new URLSearchParams(location.search).get('branch') === '1' || location.hash === '#branch';
+}
+if(isBranchLink()){
+  startBranchView();
+} else if(currentUser){ startApp(); }
+
+function buildSidebar(){
+  const nav = document.getElementById('tabsNav');
+  nav.innerHTML = '';
+  TABS.forEach(t=>{
+    const d = document.createElement('div');
+    d.className = 'tab'; d.id = 'navtab-'+t.id;
+    d.innerHTML = `<span>${t.icon}</span><span>${t.label}</span>`;
+    d.onclick = ()=>switchTab(t.id);
+    nav.appendChild(d);
+  });
+}
+function switchTab(id){
+  document.querySelectorAll('.tabPane').forEach(el=>el.style.display='none');
+  document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
+  document.getElementById('tab-'+id).style.display = 'block';
+  const navEl = document.getElementById('navtab-'+id);
+  if(navEl) navEl.classList.add('active');
+  if(id==='viewer') renderViewer();
+  if(id==='dashboard') renderDashboard();
+  if(id==='instructions') renderInstructionsTab();
+}
+
+/* ===================== OPTIONS / USERS / LISTS (settings collections) ===================== */
+function listenOptions(){
+  db.collection('settings').doc('options').onSnapshot(doc=>{
+    optionsData = doc.exists ? doc.data() : {companies:[],branches:[],methods:[],statuses:[]};
+    ['companies','branches','methods','statuses'].forEach(k=>{ if(!optionsData[k]) optionsData[k]=[]; });
+    refreshOptionUI();
+  });
+}
+function listenUsers(){
+  db.collection('users').onSnapshot(snap=>{
+    usersData = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    refreshUserUI();
+  });
+}
+function listenLists(){
+  db.collection('settings').doc('lists').onSnapshot(doc=>{
+    listsData = doc.exists ? doc.data() : {shortcuts:[],codes:[],links:[]};
+    ['shortcuts','codes','links'].forEach(k=>{ if(!listsData[k]) listsData[k]=[]; });
+    renderSimpleList('shortcutsList','shortcuts');
+    renderSimpleList('codesList','codes');
+    renderSimpleList('linksList','links');
+  });
+  db.collection('settings').doc('instructions').onSnapshot(doc=>{
+    instructionsData = doc.exists ? doc.data() : {};
+    renderInstructionsTab();
+  });
+}
+
+function refreshOptionUI(){
+  // datalists on add-form
+  fillDatalist('dl-companies', optionsData.companies);
+  fillDatalist('dl-branches', optionsData.branches);
+  fillDatalist('dl-methods', optionsData.methods);
+  // filter company select
+  const fCompany = document.getElementById('fCompany');
+  const cur = fCompany.value;
+  fCompany.innerHTML = '<option value="">كل الشركات</option>' + optionsData.companies.map(c=>`<option value="${c}">${c}</option>`).join('');
+  fCompany.value = cur;
+  // instructions company select
+  const instSel = document.getElementById('instCompanySel');
+  const curI = instSel.value;
+  instSel.innerHTML = optionsData.companies.map(c=>`<option value="${c}">${c}</option>`).join('');
+  if(curI) instSel.value = curI;
+  renderOptionChips('companiesList','companies');
+  renderOptionChips('branchesList','branches');
+  renderOptionChips('methodsList','methods');
+  renderOptionChips('statusesList','statuses');
+  renderRecords();
+}
+function fillDatalist(id, arr){
+  document.getElementById(id).innerHTML = arr.map(v=>`<option value="${v}">`).join('');
+}
+function renderOptionChips(elId, key){
+  const el = document.getElementById(elId);
+  el.innerHTML = (optionsData[key]||[]).map((v,i)=>`<span class="chip">${v}<button onclick="removeOption('${key}',${i})">×</button></span>`).join('') || '<span class="hint">لا يوجد عناصر</span>';
+}
+function addOption(key, inputId){
+  const val = document.getElementById(inputId).value.trim();
+  if(!val) return;
+  const arr = optionsData[key] || [];
+  if(arr.includes(val)) return;
+  arr.push(val);
+  db.collection('settings').doc('options').set({[key]:arr}, {merge:true});
+  document.getElementById(inputId).value='';
+}
+function removeOption(key, idx){
+  const arr = (optionsData[key]||[]).slice();
+  arr.splice(idx,1);
+  db.collection('settings').doc('options').set({[key]:arr}, {merge:true});
+}
+
+function refreshUserUI(){
+  const fUser = document.getElementById('fUser');
+  const cur = fUser.value;
+  fUser.innerHTML = usersData.map(u=>`<option value="${u.id}">${u.name||u.id}</option>`).join('');
+  fUser.value = cur || currentUser.id;
+  if(!fUser.value) fUser.value = currentUser.id;
+  const usersList = document.getElementById('usersList');
+  usersList.innerHTML = usersData.map(u=>`<span class="chip">${u.id}${u.name && u.name!==u.id ? ' ('+u.name+')' : ''}<button onclick="removeUser('${u.id}')">×</button></span>`).join('') || '<span class="hint">لا يوجد مستخدمون</span>';
+  renderRecords();
+}
+function addUser(){
+  const name = document.getElementById('newUserName').value.trim();
+  const pass = document.getElementById('newUserPass').value.trim();
+  if(!name || !pass) return;
+  db.collection('users').doc(name).set({name:name, password:pass});
+  document.getElementById('newUserName').value='';
+  document.getElementById('newUserPass').value='';
+}
+function removeUser(id){
+  if(!confirm('حذف المستخدم '+id+'؟')) return;
+  db.collection('users').doc(id).delete();
+}
+
+function renderSimpleList(elId, key){
+  const el = document.getElementById(elId);
+  const arr = listsData[key] || [];
+  el.innerHTML = arr.map((it,i)=>{
+    const isLink = key==='links';
+    const valHtml = isLink ? `<a href="${it.val}" target="_blank">${it.val}</a>` : `<span>${it.val}</span>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f2f4">
+      <div><b>${it.name}</b> — ${valHtml}</div>
+      <button class="iconBtn" onclick="removeListItem('${key}',${i})">🗑</button>
+    </div>`;
+  }).join('') || '<div class="hint">لا يوجد عناصر بعد</div>';
+}
+function addListItem(key, nameId, valId){
+  const name = document.getElementById(nameId).value.trim();
+  const val = document.getElementById(valId).value.trim();
+  if(!name || !val) return;
+  const arr = (listsData[key]||[]).slice();
+  arr.push({name, val});
+  db.collection('settings').doc('lists').set({[key]:arr}, {merge:true});
+  document.getElementById(nameId).value='';
+  document.getElementById(valId).value='';
+}
+function removeListItem(key, idx){
+  const arr = (listsData[key]||[]).slice();
+  arr.splice(idx,1);
+  db.collection('settings').doc('lists').set({[key]:arr}, {merge:true});
+}
+
+/* instructions per company */
+function renderInstructionsTab(){
+  const sel = document.getElementById('instCompanySel');
+  if(!sel.value && optionsData.companies.length) sel.value = optionsData.companies[0];
+  document.getElementById('instText').value = instructionsData[sel.value] || '';
+  sel.onchange = ()=>{ document.getElementById('instText').value = instructionsData[sel.value] || ''; };
+}
+function saveInstruction(){
+  const sel = document.getElementById('instCompanySel').value;
+  if(!sel) return;
+  db.collection('settings').doc('instructions').set({[sel]: document.getElementById('instText').value}, {merge:true});
+}
+
+/* settings password gate */
+function checkSettingsPass(){
+  const v = document.getElementById('settingsPass').value;
+  if(v === '252'){
+    document.getElementById('settingsGate').style.display = 'none';
+    document.getElementById('settingsBody').style.display = 'block';
+  } else {
+    alert('كلمة السر غير صحيحة');
+  }
+}
+
+/* ===================== RECORDS ===================== */
+function listenRecords(){
+  db.collection('records').orderBy('createdAt','desc').onSnapshot(snap=>{
+    allRecords = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderRecords();
+    renderStats();
+  });
+}
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function monthStr(d){ return (d||todayStr()).slice(0,7); }
+
+function saveNewRecord(){
+  const phone = document.getElementById('newPhone').value.trim();
+  const company = document.getElementById('newCompany').value.trim();
+  const branch = document.getElementById('newBranch').value.trim();
+  const method = document.getElementById('newMethod').value.trim();
+  if(!phone){ alert('ادخل رقم الهاتف'); return; }
+  const rec = {
+    date: todayStr(),
+    user: currentUser.id,
+    phone, company, branch, method,
+    status: '',
+    notes: '',
+    notesLog: [],
+    companyTime: null,
+    patientTime: null,
+    attachmentGroups: [{name: phone, files:[], notes:''}],
+    cancelled: false,
+    history: [{field:'إنشاء', from:'', to:'تم إنشاء السجل', time: new Date().toLocaleString('ar-EG'), user: currentUser.id}],
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  db.collection('records').add(rec).then(()=>{
+    document.getElementById('newPhone').value='';
+    document.getElementById('newCompany').value='';
+    document.getElementById('newBranch').value='';
+    document.getElementById('newMethod').value='';
+  });
+}
+function openWa(){
+  const phone = document.getElementById('newPhone').value.trim().replace(/[^0-9]/g,'');
+  if(!phone){ alert('ادخل رقم الهاتف أولاً'); return; }
+  window.open('https://wa.me/'+phone, '_blank');
+}
+
+function currentFilters(){
+  return {
+    user: document.getElementById('fUser').value,
+    date: document.getElementById('fDate').value,
+    company: document.getElementById('fCompany').value,
+    search: document.getElementById('fSearch').value.trim().toLowerCase()
+  };
+}
+function applyFilters(){ renderRecords(); renderStats(); }
+function resetFilters(){
+  document.getElementById('fUser').value = currentUser.id;
+  document.getElementById('fDate').valueAsDate = new Date();
+  document.getElementById('fCompany').value = '';
+  document.getElementById('fSearch').value = '';
+  renderRecords(); renderStats();
+}
+
+function renderRecords(){
+  const f = currentFilters();
+  let rows = allRecords.filter(r=>{
+    if(f.date && r.date !== f.date) return false;
+    if(f.company && r.company !== f.company) return false;
+    if(f.search){
+      const hay = [r.phone,r.company,r.branch,r.method,r.notes,r.user].join(' ').toLowerCase();
+      if(!hay.includes(f.search)) return false;
+    }
+    return true;
+  });
+  const tbody = document.getElementById('recordsBody');
+  tbody.innerHTML = rows.map(r=>rowHtml(r)).join('') || '<tr><td colspan="12" class="hint" style="padding:20px">لا يوجد سجلات</td></tr>';
+}
+
+function rowHtml(r){
+  const statusOpts = (optionsData.statuses||[]).map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${s}</option>`).join('');
+  const companyOpts = (optionsData.companies||[]).map(s=>`<option value="${s}" ${r.company===s?'selected':''}>${s}</option>`).join('');
+  const branchOpts = (optionsData.branches||[]).map(s=>`<option value="${s}" ${r.branch===s?'selected':''}>${s}</option>`).join('');
+  const methodOpts = (optionsData.methods||[]).map(s=>`<option value="${s}" ${r.method===s?'selected':''}>${s}</option>`).join('');
+  const cancelIcon = r.cancelled ? `<button class="iconBtn" title="استرجاع" onclick="toggleCancel('${r.id}')">↩️</button>` : `<button class="iconBtn" title="إلغاء" onclick="toggleCancel('${r.id}')">🚫</button>`;
+  const canCancel = r.user === currentUser.id;
+  return `<tr class="${r.cancelled?'cancelled':''}">
+    <td>${r.date||''}</td>
+    <td>${r.user||''}</td>
+    <td>${r.phone||''}</td>
+    <td><button class="iconBtn" onclick="openAttach('${r.id}')">📎</button></td>
+    <td><button class="dot ${r.companyTime?'on':'off'}" onclick="toggleTime('${r.id}','companyTime')" title="${r.companyTime||''}"></button></td>
+    <td><button class="dot ${r.patientTime?'on':'off'}" onclick="toggleTime('${r.id}','patientTime')" title="${r.patientTime||''}"></button></td>
+    <td><select class="miniSelect" onchange="updateField('${r.id}','company',this.value)"><option value="">-</option>${companyOpts}</select></td>
+    <td><select class="miniSelect" onchange="updateField('${r.id}','branch',this.value)"><option value="">-</option>${branchOpts}</select></td>
+    <td><select class="miniSelect" onchange="updateField('${r.id}','method',this.value)"><option value="">-</option>${methodOpts}</select></td>
+    <td><select class="miniSelect" onchange="updateField('${r.id}','status',this.value)"><option value="">-</option>${statusOpts}</select></td>
+    <td><span class="notesTxt" title="${(r.notes||'').replace(/"/g,'')}">${r.notes||'-'}</span></td>
+    <td>
+      <button class="iconBtn" title="ملاحظات" onclick="openNotes('${r.id}')">💬</button>
+      <button class="iconBtn" title="السجل" onclick="openHistory('${r.id}')">🕒</button>
+      ${canCancel ? cancelIcon : ''}
+    </td>
+  </tr>`;
+}
+
+function logHistory(rec, field, from, to){
+  const entry = {field, from: from||'', to: to||'', time: new Date().toLocaleString('ar-EG'), user: currentUser.id};
+  return firebase.firestore.FieldValue.arrayUnion(entry);
+}
+function updateField(id, field, value){
+  const rec = allRecords.find(r=>r.id===id);
+  if(!rec) return;
+  db.collection('records').doc(id).update({
+    [field]: value,
+    history: logHistory(rec, field, rec[field], value)
+  });
+}
+function toggleTime(id, field){
+  const rec = allRecords.find(r=>r.id===id);
+  if(!rec) return;
+  const newVal = rec[field] ? null : new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+  db.collection('records').doc(id).update({
+    [field]: newVal,
+    history: logHistory(rec, field, rec[field], newVal)
+  });
+}
+function toggleCancel(id){
+  const rec = allRecords.find(r=>r.id===id);
+  if(!rec) return;
+  if(rec.user !== currentUser.id){ alert('لا يمكن إلغاء السجل إلا من خلال المستخدم الذي أنشأه'); return; }
+  const newVal = !rec.cancelled;
+  db.collection('records').doc(id).update({
+    cancelled: newVal,
+    history: logHistory(rec, 'الحالة', rec.cancelled?'ملغي':'نشط', newVal?'ملغي':'نشط')
+  });
+}
+
+/* ===================== STATS ===================== */
+function renderStats(){
+  const f = currentFilters();
+  const today = todayStr();
+  const month = monthStr(today);
+  const userSel = f.user || currentUser.id;
+
+  const monthAll = allRecords.filter(r=>monthStr(r.date)===month).length;
+  const dayAll = allRecords.filter(r=>r.date===today).length;
+  const userMonth = allRecords.filter(r=>monthStr(r.date)===month && r.user===userSel).length;
+
+  const leftUser = allRecords.filter(r=>r.user===userSel && !r.patientTime).length;
+  const leftAll = allRecords.filter(r=>monthStr(r.date)===month && !r.patientTime).length;
+
+  document.getElementById('stMonthAll').textContent = monthAll;
+  document.getElementById('stDayAll').textContent = dayAll;
+  document.getElementById('stUserMonth').textContent = userMonth;
+  document.getElementById('stLeftUser').textContent = leftUser;
+  document.getElementById('stLeftAll').textContent = leftAll;
+}
+
+/* ===================== DASHBOARD ===================== */
+function renderDashboard(){
+  const month = monthStr(todayStr());
+  const byUser = {};
+  allRecords.filter(r=>monthStr(r.date)===month).forEach(r=>{ byUser[r.user]=(byUser[r.user]||0)+1; });
+  document.getElementById('dashUsers').innerHTML = Object.keys(byUser).map(u=>`
+    <div class="statCard c5"><div class="lbl">${u}</div><div class="val">${byUser[u]}</div></div>
+  `).join('') || '<div class="hint">لا يوجد بيانات</div>';
+
+  const byCompany = {};
+  allRecords.filter(r=>monthStr(r.date)===month).forEach(r=>{ const c=r.company||'غير محدد'; byCompany[c]=(byCompany[c]||0)+1; });
+  document.getElementById('dashCompanies').innerHTML = Object.keys(byCompany).map(c=>`
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f2f4"><span>${c}</span><b>${byCompany[c]}</b></div>
+  `).join('') || '<div class="hint">لا يوجد بيانات</div>';
+}
+
+/* ===================== ATTACHMENTS MODAL ===================== */
+const UPLOAD_LABELS = {image:'رفع صورة', approval:'رفع موافقة'};
+
+function openAttach(id){
+  activeAttachRecordId = id;
+  renderAttachGroups();
+  document.getElementById('ovAttach').classList.add('show');
+}
+function renderAttachGroups(){
+  const rec = allRecords.find(r=>r.id===activeAttachRecordId);
+  const groups = rec.attachmentGroups && rec.attachmentGroups.length ? rec.attachmentGroups : [{name: rec.phone || 'بدون_رقم', files:[], notes:''}];
+  document.getElementById('attGroups').innerHTML = groups.map((g,gi)=>`
+    <div class="attGroupBox">
+      <div class="gTitle">${g.name} <button class="iconBtn" title="تعديل اسم المجلد" onclick="renameGroup(${gi})">✏️</button></div>
+      <div class="attGrid">
+        ${(g.files||[]).map(f=>`<a href="${f.url}" target="_blank" title="${f.name||''}">${f.type==='image'?`<img src="${f.thumb||f.url}">`:'📄'}<span class="fname">${f.name||''}</span></a>`).join('') || '<span class="hint">لا يوجد مرفقات</span>'}
+      </div>
+      <div class="gBtns">
+        <label class="btn btn-outline" style="display:inline-block">📷 رفع صورة<input type="file" id="fileImg_${gi}" accept="image/*" multiple style="display:none" onchange="uploadFiles('image',${gi})"></label>
+        <label class="btn btn-outline" style="display:inline-block">✅ رفع موافقة<input type="file" id="fileApp_${gi}" multiple style="display:none" onchange="uploadFiles('approval',${gi})"></label>
+      </div>
+      <label class="small">ملاحظات هذا الملف</label>
+      <textarea id="gNotes_${gi}" rows="2">${g.notes||''}</textarea>
+      <div class="rowFlex" style="margin-top:6px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="saveGroupNotes(${gi})">حفظ الملاحظة</button>
+      </div>
+    </div>`).join('');
+}
+function addPatientGroup(){
+  const name = prompt('اسم المريض / الملف الجديد:');
+  if(!name) return;
+  const rec = allRecords.find(r=>r.id===activeAttachRecordId);
+  const groups = (rec.attachmentGroups||[]).slice();
+  groups.push({name, files:[], notes:''});
+  db.collection('records').doc(activeAttachRecordId).update({
+    attachmentGroups: groups,
+    history: logHistory(rec, 'مرفقات', '', `تم إضافة ملف باسم: ${name}`)
+  }).then(renderAttachGroups);
+}
+function renameGroup(gi){
+  const rec = allRecords.find(r=>r.id===activeAttachRecordId);
+  const groups = (rec.attachmentGroups||[]).slice();
+  const oldName = groups[gi].name;
+  const newName = (prompt('اسم المجلد/الملف:', oldName)||'').trim();
+  if(!newName || newName===oldName) return;
+  groups[gi] = Object.assign({}, groups[gi], {name:newName});
+  db.collection('records').doc(activeAttachRecordId).update({
+    attachmentGroups: groups,
+    history: logHistory(rec, 'اسم ملف مرفقات', oldName, newName)
+  }).then(renderAttachGroups);
+}
+function saveGroupNotes(gi){
+  const rec = allRecords.find(r=>r.id===activeAttachRecordId);
+  const groups = (rec.attachmentGroups||[]).slice();
+  const val = document.getElementById('gNotes_'+gi).value;
+  const oldVal = groups[gi].notes || '';
+  groups[gi] = Object.assign({}, groups[gi], {notes: val});
+  db.collection('records').doc(activeAttachRecordId).update({
+    attachmentGroups: groups,
+    history: logHistory(rec, `ملاحظات (${groups[gi].name})`, oldVal, val)
+  }).then(renderAttachGroups);
+}
+function uploadFiles(kind, groupIndex){
+  const inputId = kind==='image' ? ('fileImg_'+groupIndex) : ('fileApp_'+groupIndex);
+  const inputEl = document.getElementById(inputId);
+  const files = inputEl.files;
+  if(!files.length) return;
+  const rec = allRecords.find(r=>r.id===activeAttachRecordId);
+  const groups = (rec.attachmentGroups && rec.attachmentGroups.length) ? rec.attachmentGroups.slice() : [{name: rec.phone || 'بدون_رقم', files:[], notes:''}];
+  const group = groups[groupIndex];
+  if(!group) return;
+  const box = document.getElementById('attGroups').children[groupIndex];
+  if(box) box.style.opacity = '.6';
+  const label = UPLOAD_LABELS[kind] || kind;
+  const fileArr = Array.from(files);
+  (async ()=>{
+    const uploaded = [];
+    for(let i=0;i<fileArr.length;i++){
+      const file = fileArr[i];
+      const extMatch = file.name.match(/\.[^.\/\\]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+      const customName = (fileArr.length>1 ? `${label} ${i+1}` : label) + ext;
+      try{
+        const d = await driveUploadFile(file, rec.phone, group.name, customName);
+        uploaded.push({url: d.url, thumb: kind==='image' ? d.thumb : null, name: customName, type: kind, driveId: d.id});
+      }catch(err){ alert('خطأ في رفع '+file.name+': '+err.message); }
+    }
+    if(box) box.style.opacity = '1';
+    if(!uploaded.length) return;
+    group.files = (group.files||[]).concat(uploaded);
+    db.collection('records').doc(activeAttachRecordId).update({
+      attachmentGroups: groups,
+      history: logHistory(rec, 'مرفقات', '', `تم رفع ${uploaded.length} ملف - ${group.name}`)
+    }).then(()=>{ inputEl.value=''; renderAttachGroups(); });
+  })();
+}
+
+/* ===================== NOTES CHAT MODAL ===================== */
+function openNotes(id){
+  activeNotesRecordId = id;
+  renderNotesChat();
+  document.getElementById('ovNotes').classList.add('show');
+}
+function renderNotesChat(){
+  const rec = allRecords.find(r=>r.id===activeNotesRecordId);
+  const log = rec.notesLog || [];
+  document.getElementById('notesChat').innerHTML = log.map(n=>`
+    <div class="chatMsg"><div class="meta">${n.user} - ${n.time}</div>${n.text}</div>
+  `).join('') || '<div class="hint">لا يوجد ملاحظات بعد</div>';
+}
+function sendNote(){
+  const text = document.getElementById('notesInput').value.trim();
+  if(!text) return;
+  const rec = allRecords.find(r=>r.id===activeNotesRecordId);
+  const entry = {user: currentUser.id, time: new Date().toLocaleString('ar-EG'), text, from: rec.notes||'', to:text};
+  db.collection('records').doc(activeNotesRecordId).update({
+    notesLog: firebase.firestore.FieldValue.arrayUnion(entry),
+    notes: text
+  }).then(()=>{
+    document.getElementById('notesInput').value='';
+  });
+}
+
+/* ===================== HISTORY MODAL ===================== */
+function openHistory(id){
+  const rec = allRecords.find(r=>r.id===id);
+  const hist = (rec.history||[]).slice().reverse();
+  document.getElementById('historyBody').innerHTML = hist.map(h=>`
+    <div class="histRow"><b>${h.field}</b>: ${h.from||'-'} ← ${h.to||'-'}<br><span class="hint">${h.user} - ${h.time}</span></div>
+  `).join('') || '<div class="hint">لا يوجد سجل تعديلات</div>';
+  document.getElementById('ovHistory').classList.add('show');
+}
+
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+/* ===================== VIEWER (other branch, attachments by phone) ===================== */
+function renderViewer(){
+  const y = document.getElementById('vwYear').value.trim();
+  const m = document.getElementById('vwMonth').value.trim();
+  const d = document.getElementById('vwDay').value.trim();
+  const s = document.getElementById('vwSearch').value.trim();
+  let rows = allRecords.filter(r=>r.date);
+  if(y) rows = rows.filter(r=>r.date.slice(0,4)===y.padStart(4,'0'));
+  if(m) rows = rows.filter(r=>r.date.slice(5,7)===m.padStart(2,'0'));
+  if(d) rows = rows.filter(r=>r.date.slice(8,10)===d.padStart(2,'0'));
+  if(s) rows = rows.filter(r=>(r.phone||'').includes(s));
+  const tbody = document.getElementById('viewerBody');
+  tbody.innerHTML = rows.map(r=>{
+    const count = (r.attachmentGroups||[]).reduce((a,g)=>a+((g.files||[]).length),0);
+    return `<tr>
+      <td>${r.date}</td><td>${r.phone||''}</td><td>${r.company||''}</td><td>${count}</td>
+      <td><button class="iconBtn" onclick="viewerOpenAttach('${r.id}')">👁️ عرض</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" class="hint" style="padding:20px">لا يوجد نتائج</td></tr>';
+}
+function viewerOpenAttach(id){
+  openAttach(id);
+  // hide upload controls for read-only branch view context could be added; kept simple/shared modal
+}
+
+/* ===================== BRANCH VIEW (رابط مستقل بدون تسجيل دخول للفروع الأخرى) ===================== */
+function startBranchView(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('branchView').style.display = 'block';
+  db.collection('records').orderBy('createdAt','desc').onSnapshot(snap=>{
+    allRecords = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderBranchView();
+  });
+}
+function renderBranchView(){
+  const y = document.getElementById('bvYear').value.trim();
+  const m = document.getElementById('bvMonth').value.trim();
+  const d = document.getElementById('bvDay').value.trim();
+  const s = document.getElementById('bvSearch').value.trim();
+  let rows = allRecords.filter(r=>r.date);
+  if(y) rows = rows.filter(r=>r.date.slice(0,4)===y.padStart(4,'0'));
+  if(m) rows = rows.filter(r=>r.date.slice(5,7)===m.padStart(2,'0'));
+  if(d) rows = rows.filter(r=>r.date.slice(8,10)===d.padStart(2,'0'));
+  if(s) rows = rows.filter(r=>(r.phone||'').includes(s));
+  const tbody = document.getElementById('branchBody');
+  tbody.innerHTML = rows.map(r=>{
+    const count = (r.attachmentGroups||[]).reduce((a,g)=>a+((g.files||[]).length),0);
+    return `<tr>
+      <td>${r.date||''}</td><td>${r.phone||''}</td><td>${r.company||''}</td><td>${r.branch||''}</td><td>${count}</td>
+      <td><button class="iconBtn" onclick="openBranchAttach('${r.id}')">👁️ عرض / طباعة</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="hint" style="padding:20px">لا يوجد نتائج</td></tr>';
+}
+function openBranchAttach(id){
+  const rec = allRecords.find(r=>r.id===id);
+  if(!rec) return;
+  document.getElementById('bvDetailTitle').textContent = `مرفقات - ${rec.phone||''} - ${rec.date||''} - ${rec.company||''}`;
+  const groups = rec.attachmentGroups && rec.attachmentGroups.length ? rec.attachmentGroups : [{name: rec.phone || 'بدون_رقم', files:[], notes:''}];
+  document.getElementById('bvDetailGroups').innerHTML = groups.map(g=>`
+    <div style="margin-bottom:14px">
+      <label class="small">${g.name}</label>
+      ${g.notes ? `<div class="hint" style="margin:2px 0 6px">📝 ${g.notes}</div>` : ''}
+      <div class="attGrid">
+        ${(g.files||[]).map(f=>`<a href="${f.url}" target="_blank" title="${f.name||''}">${f.type==='image'?`<img src="${f.thumb||f.url}">`:'📄'}<span class="fname">${f.name||''}</span></a>`).join('') || '<span class="hint">لا يوجد مرفقات</span>'}
+      </div>
+    </div>`).join('');
+  document.getElementById('ovBranchAttach').classList.add('show');
+}
+
+window.onclick = function(e){
+  document.querySelectorAll('.overlay').forEach(ov=>{ if(e.target===ov) ov.classList.remove('show'); });
+};
+</script>
+</body>
+</html>
